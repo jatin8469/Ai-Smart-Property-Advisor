@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Modern Home Structure inside 66dp safe zone (21 to 87) -->
+    <!-- Base House -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,52 L35,76 C35,77.1 35.9,78 37,78 L71,78 C72.1,78 73,77.1 73,76 L73,52 L54,34 L35,52 Z" />
+
+    <!-- Roof Overhang / Accent -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M54,30 L28,54 L32,58 L54,37 L76,58 L80,54 Z" />
+
+    <!-- Modern Door with Keycard / Tech vibe -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M48,62 L60,62 L60,78 L48,78 Z" />
+
+    <!-- Smart Window with light -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M40,56 L46,56 L46,64 L40,64 Z" />
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M62,56 L68,56 L68,64 L62,64 Z" />
+
+    <!-- AI Sparkle / Star top right -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M72,32 C72,36 76,36 76,36 C76,36 72,36 72,40 C72,36 68,36 68,36 C68,36 72,36 72,32 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M62,26 C62,29 65,29 65,29 C65,29 62,29 62,32 C62,29 59,29 59,29 C59,29 62,29 62,26 Z" />
+
+    <!-- Smart Pulse Dot -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M54,68 A2,2 0 1,1 54,64 A2,2 0 1,1 54,68" />
+</vector>
