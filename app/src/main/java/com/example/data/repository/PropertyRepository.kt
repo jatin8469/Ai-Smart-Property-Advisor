@@ -2,6 +2,10 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.api.GeminiAdvisorService
+import com.example.data.local.PropertyDao
+import com.example.data.local.toDomainModel
+import com.example.data.local.toEntity
+import com.example.data.local.toSavedEntity
 import com.example.data.model.ChatMessage
 import com.example.data.model.PriceAlert
 import com.example.data.model.PropertyListing
@@ -11,9 +15,11 @@ import com.example.data.util.NotificationHelper
 import com.example.ui.theme.ThemeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -29,11 +35,18 @@ data class PropertyFilter(
 )
 
 class PropertyRepository(
+    private val propertyDao: PropertyDao? = null,
     private val geminiAdvisorService: GeminiAdvisorService = GeminiAdvisorService(),
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Main)
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Main),
+    seedInitialSaved: Boolean = true
 ) {
     private val _properties = MutableStateFlow<List<PropertyListing>>(createSampleProperties())
     val properties: StateFlow<List<PropertyListing>> = _properties.asStateFlow()
+
+    val savedPropertiesFlow: Flow<List<PropertyListing>> =
+        propertyDao?.getAllSavedProperties()?.map { entities ->
+            entities.map { it.toDomainModel() }
+        } ?: _properties.map { list -> list.filter { it.isSaved } }
 
     private val _userProfile = MutableStateFlow(UserProfile())
     val userProfile: StateFlow<UserProfile> = _userProfile.asStateFlow()
@@ -53,6 +66,43 @@ class PropertyRepository(
     private val _activeChatProperty = MutableStateFlow<PropertyListing?>(null)
     val activeChatProperty: StateFlow<PropertyListing?> = _activeChatProperty.asStateFlow()
 
+    init {
+        if (propertyDao != null) {
+            scope.launch {
+                if (seedInitialSaved && propertyDao.getSavedCount() == 0) {
+                    val initialSaved = createSampleProperties()
+                        .filter { it.isSaved }
+                        .map { it.toSavedEntity() }
+                    propertyDao.insertAllSavedProperties(initialSaved)
+                }
+
+                launch {
+                    propertyDao.getAllSavedProperties().collect { savedEntities ->
+                        val savedById = savedEntities.associateBy { it.id }
+                        _properties.value = _properties.value.map { prop ->
+                            val savedEntity = savedById[prop.id]
+                            if (savedEntity != null) {
+                                prop.copy(
+                                    isSaved = true,
+                                    price = savedEntity.price,
+                                    previousPrice = savedEntity.previousPrice
+                                )
+                            } else {
+                                prop.copy(isSaved = false)
+                            }
+                        }
+                    }
+                }
+
+                launch {
+                    propertyDao.getAllPriceAlerts().collect { alertEntities ->
+                        _priceAlerts.value = alertEntities.map { it.toDomainModel() }
+                    }
+                }
+            }
+        }
+    }
+
     fun updateFilter(update: (PropertyFilter) -> PropertyFilter) {
         _filter.value = update(_filter.value)
     }
@@ -61,17 +111,40 @@ class PropertyRepository(
         _filter.value = PropertyFilter()
     }
 
+    suspend fun saveProperty(property: PropertyListing) {
+        val savedCopy = property.copy(isSaved = true)
+        _properties.value = _properties.value.map {
+            if (it.id == property.id) savedCopy else it
+        }
+        propertyDao?.insertSavedProperty(savedCopy.toSavedEntity())
+    }
+
+    suspend fun removeSavedProperty(propertyId: String) {
+        _properties.value = _properties.value.map {
+            if (it.id == propertyId) it.copy(isSaved = false) else it
+        }
+        propertyDao?.deleteSavedPropertyById(propertyId)
+    }
+
     fun toggleSave(propertyId: String, context: Context? = null) {
         val currentList = _properties.value
-        val updated = currentList.map { prop ->
-            if (prop.id == propertyId) {
-                val newSavedState = !prop.isSaved
-                prop.copy(isSaved = newSavedState)
-            } else {
-                prop
+        val targetProperty = currentList.firstOrNull { it.id == propertyId } ?: return
+        val newSavedState = !targetProperty.isSaved
+        val updatedProperty = targetProperty.copy(isSaved = newSavedState)
+
+        _properties.value = currentList.map { prop ->
+            if (prop.id == propertyId) updatedProperty else prop
+        }
+
+        if (propertyDao != null) {
+            scope.launch {
+                if (newSavedState) {
+                    propertyDao.insertSavedProperty(updatedProperty.toSavedEntity())
+                } else {
+                    propertyDao.deleteSavedPropertyById(propertyId)
+                }
             }
         }
-        _properties.value = updated
     }
 
     fun setActiveChatProperty(property: PropertyListing?) {
@@ -144,22 +217,18 @@ class PropertyRepository(
     }
 
     /**
-     * Simulates real-time price changes on housing listings and pushes notifications!
+     * Simulates real-time price changes on housing listings, persists to Room, and pushes notifications!
      */
     fun simulateMarketPriceDrop(context: Context) {
         val list = _properties.value
-        // Prefer a saved property if exists, else first available
         val target = list.firstOrNull { it.isSaved } ?: list.firstOrNull() ?: return
         val discount = listOf(50, 75, 100, 150).random()
         val oldPrice = target.price
         val newPrice = (oldPrice - discount).coerceAtLeast(400)
+        val updatedTarget = target.copy(price = newPrice, previousPrice = oldPrice)
 
         val updatedList = list.map {
-            if (it.id == target.id) {
-                it.copy(price = newPrice, previousPrice = oldPrice)
-            } else {
-                it
-            }
+            if (it.id == target.id) updatedTarget else it
         }
         _properties.value = updatedList
 
@@ -171,6 +240,15 @@ class PropertyRepository(
             newPrice = newPrice
         )
         _priceAlerts.value = listOf(alert) + _priceAlerts.value
+
+        if (propertyDao != null) {
+            scope.launch {
+                if (updatedTarget.isSaved) {
+                    propertyDao.insertSavedProperty(updatedTarget.toSavedEntity())
+                }
+                propertyDao.insertPriceAlert(alert.toEntity())
+            }
+        }
 
         // Trigger real push notification if enabled
         if (_userProfile.value.notifyOnPriceChanges) {
@@ -187,6 +265,11 @@ class PropertyRepository(
     fun markAlertAsRead(alertId: String) {
         _priceAlerts.value = _priceAlerts.value.map {
             if (it.id == alertId) it.copy(isRead = true) else it
+        }
+        if (propertyDao != null) {
+            scope.launch {
+                propertyDao.markAlertAsRead(alertId)
+            }
         }
     }
 
@@ -212,7 +295,7 @@ class PropertyRepository(
                 title = "The University Lofts & Suites",
                 description = "Modern student-tailored community just steps from campus. Features private study pods, high-speed fiber internet, rooftop skyline terrace, and package lockers.",
                 price = 850,
-                previousPrice = 950, // Has a $100 price drop!
+                previousPrice = 950,
                 address = "410 Campus Drive, University District",
                 latitude = 37.7749,
                 longitude = -122.4194,
@@ -236,7 +319,7 @@ class PropertyRepository(
                 leaseTermsMonths = 12,
                 safetyScore = 96,
                 walkScore = 98,
-                estimatedUtilitiesMonthly = 0, // Included!
+                estimatedUtilitiesMonthly = 0,
                 availableDate = "Aug 15, 2026"
             ),
             PropertyListing(
@@ -274,7 +357,7 @@ class PropertyRepository(
                 id = "prop_3",
                 title = "College Green 3-Bed Townhome",
                 description = "Spacious three-bedroom townhome ideal for groups of students. Features a private enclosed patio, attached 2-car garage, and newly renovated kitchen.",
-                price = 1950, // $650 per student!
+                price = 1950,
                 previousPrice = null,
                 address = "124 Elmwood Avenue, College Park",
                 latitude = 37.7710,

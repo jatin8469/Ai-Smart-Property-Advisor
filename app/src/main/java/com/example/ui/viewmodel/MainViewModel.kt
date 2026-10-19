@@ -2,7 +2,9 @@ package com.example.ui.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AppDatabase
 import com.example.data.model.ChatMessage
 import com.example.data.model.PriceAlert
 import com.example.data.model.PropertyListing
@@ -75,9 +77,11 @@ class MainViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val savedProperties: StateFlow<List<PropertyListing>> =
-        allProperties.combine(allProperties) { list, _ ->
-            list.filter { it.isSaved }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        repository.savedPropertiesFlow.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     fun navigateTo(screen: ScreenDestination) {
         _currentScreen.value = screen
@@ -139,7 +143,6 @@ class MainViewModel(
 
     fun toggleSave(propertyId: String, context: Context) {
         repository.toggleSave(propertyId, context)
-        // Also update selected detail if currently open
         val currentDetail = _selectedPropertyDetail.value
         if (currentDetail != null && currentDetail.id == propertyId) {
             _selectedPropertyDetail.value = currentDetail.copy(isSaved = !currentDetail.isSaved)
@@ -187,5 +190,19 @@ class MainViewModel(
                 isAuthenticated = false
             )
         )
+    }
+
+    companion object {
+        fun provideFactory(context: Context): ViewModelProvider.Factory {
+            val appContext = context.applicationContext
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    val dao = AppDatabase.getInstance(appContext).propertyDao()
+                    val repo = PropertyRepository(propertyDao = dao)
+                    return MainViewModel(repository = repo) as T
+                }
+            }
+        }
     }
 }

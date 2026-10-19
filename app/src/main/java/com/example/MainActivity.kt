@@ -34,12 +34,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.util.NotificationHelper
 import com.example.ui.components.AppTopBar
@@ -60,8 +60,10 @@ class MainActivity : ComponentActivity() {
         NotificationHelper.initChannel(this)
         enableEdgeToEdge()
         setContent {
-            val viewModel: MainViewModel = viewModel()
-            val userProfile by viewModel.userProfile.collectAsState()
+            val viewModel: MainViewModel = viewModel(
+                factory = MainViewModel.provideFactory(this@MainActivity)
+            )
+            val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
 
             SmartPropertyTheme(themeMode = userProfile.themePreference) {
                 MainAppContent(viewModel = viewModel)
@@ -73,19 +75,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppContent(viewModel: MainViewModel) {
     val context = LocalContext.current
-    val currentScreen by viewModel.currentScreen.collectAsState()
-    val selectedDetail by viewModel.selectedPropertyDetail.collectAsState()
-    val showFilterSheet by viewModel.showFilterSheet.collectAsState()
+    val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val selectedDetail by viewModel.selectedPropertyDetail.collectAsStateWithLifecycle()
+    val showFilterSheet by viewModel.showFilterSheet.collectAsStateWithLifecycle()
 
-    val filteredProperties by viewModel.filteredProperties.collectAsState()
-    val allProperties by viewModel.allProperties.collectAsState()
-    val savedProperties by viewModel.savedProperties.collectAsState()
-    val priceAlerts by viewModel.priceAlerts.collectAsState()
-    val filter by viewModel.filter.collectAsState()
-    val userProfile by viewModel.userProfile.collectAsState()
-    val chatMessages by viewModel.chatMessages.collectAsState()
-    val isAdvisorThinking by viewModel.isAdvisorThinking.collectAsState()
-    val activeChatProperty by viewModel.activeChatProperty.collectAsState()
+    val filteredProperties by viewModel.filteredProperties.collectAsStateWithLifecycle()
+    val allProperties by viewModel.allProperties.collectAsStateWithLifecycle()
+    val savedProperties by viewModel.savedProperties.collectAsStateWithLifecycle()
+    val priceAlerts by viewModel.priceAlerts.collectAsStateWithLifecycle()
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val isAdvisorThinking by viewModel.isAdvisorThinking.collectAsStateWithLifecycle()
+    val activeChatProperty by viewModel.activeChatProperty.collectAsStateWithLifecycle()
 
     // Request notification permission on Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
